@@ -2,12 +2,14 @@
 (function () {
   'use strict';
 
-  /* ---------- Limity: zmieniasz tylko tutaj ---------- */
+  /* ---------- Limity: zmieniasz tylko tutaj (komunikaty biorą liczby stąd) ---------- */
   var LIMITS = {
     proszek: { w: 140, h: 125, d: 60, minQty: 10 },
     mokro: { w: 200 },
     toczenie: { cnc: 30, uni: 100 }
   };
+
+  var CONTACT = { tel: '32 219 84 62', mail: 'biuro@misiarz.pl' };
 
   var ICONS = {
     ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg>',
@@ -22,13 +24,19 @@
     toczenie: ['Długość, cm', 'Średnica (opc.)', 'Wysokość (opc.)']
   };
 
-  var form = document.getElementById('checker');
+  var NAMES = { proszek: 'Malowanie proszkowe', mokro: 'Lakierowanie na mokro', toczenie: 'Toczenie / frezowanie' };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var form = $('checker');
   if (form) {
     var mode = 'proszek';
-    var $ = function (id) { return document.getElementById(id); };
     var inA = $('in-a'), inB = $('in-b'), inC = $('in-c'), inQ = $('in-q');
-    var verdict = $('verdict'), notes = $('notes'), cta = $('check-cta');
+    var verdict = $('verdict'), notes = $('notes'), cta = $('check-cta'), live = $('check-live');
     var modeBtns = form.querySelectorAll('.mode');
+    var liveTimer = null;
+    var announce = false;
 
     var num = function (el) {
       var x = parseFloat(String(el.value).replace(',', '.'));
@@ -43,33 +51,40 @@
 
       if (mode === 'proszek') {
         var L = LIMITS.proszek;
+        var maxTxt = L.w + ' × ' + L.h + ' × ' + L.d + ' cm';
         var have = W !== null && H !== null && D !== null;
         if (!have) add('maybe', 'Wpisz szerokość, wysokość i głębokość w centymetrach.');
-        else if (W <= L.w && H <= L.h && D <= L.d) add('ok', 'Mieści się w piecu: 140 × 125 × 60 cm.');
+        else if (W <= L.w && H <= L.h && D <= L.d) add('ok', 'Mieści się w piecu: ' + maxTxt + '.');
         else {
           var a = [W, H, D].sort(function (x, y) { return y - x; });
           if (a[0] <= L.w && a[1] <= L.h && a[2] <= L.d) add('maybe', 'Mieści się tylko obrócony. Zadzwoń, sprawdzimy, czy da się go tak zawiesić.');
-          else add('no', 'Za duży na nasz piec. Maks. 140 × 125 × 60 cm.');
+          else add('no', 'Za duży na nasz piec. Maks. ' + maxTxt + '.');
         }
-        if (Q === null) add('maybe', 'Ile sztuk? Proszek przyjmujemy od 10.');
-        else if (Q < L.minQty) add('no', 'Poniżej 10 sztuk piec się nie opłaca. Dołóż do partii.');
-        else add('ok', Math.round(Q) + ' szt. Powyżej progu 10 sztuk.');
+        if (Q === null) add('maybe', 'Ile sztuk? Proszek przyjmujemy od ' + L.minQty + '.');
+        else if (Q < L.minQty) add('no', 'Poniżej ' + L.minQty + ' sztuk piec się nie opłaca. Dołóż do partii.');
+        else add('ok', Math.round(Q) + ' szt. Powyżej progu ' + L.minQty + ' sztuk.');
         add('maybe', 'Element nowy i czysty, bez rdzy i starego lakieru? Inaczej nie przyjmiemy.');
         decided = have && Q !== null;
       } else if (mode === 'mokro') {
+        var M = LIMITS.mokro;
         if (W === null) add('maybe', 'Wpisz szerokość w centymetrach.');
-        else if (W <= LIMITS.mokro.w) add('ok', 'Szerokość mieści się w kabinie (200 cm).');
-        else add('no', 'Za szeroki. Kabina ma 200 cm szerokości.');
-        add('maybe', 'Wysokość, głębokość i ilość potwierdzimy przy wycenie.');
+        else if (W <= M.w) add('ok', 'Szerokość mieści się w kabinie (' + M.w + ' cm).');
+        else add('no', 'Za szeroki. Kabina ma ' + M.w + ' cm szerokości.');
+        add('maybe', (H !== null || D !== null || Q !== null)
+          ? 'Wysokość, głębokość i ilość przeniesiemy do zapytania. Potwierdzimy je przy wycenie.'
+          : 'Wysokość, głębokość i ilość potwierdzimy przy wycenie.');
         add('maybe', 'Drewno, sklejka, MDF albo metal. Lakiery wodne bez zapachu.');
         decided = W !== null;
       } else {
+        var T = LIMITS.toczenie;
         if (W === null) add('maybe', 'Wpisz długość detalu w centymetrach.');
-        else if (W <= LIMITS.toczenie.cnc) add('ok', 'Do 30 cm długości: automat CNC albo maszyny uniwersalne.');
-        else if (W <= LIMITS.toczenie.uni) add('ok', 'Do 100 cm długości: tokarka lub frezarka uniwersalna.');
-        else add('no', 'Ponad 100 cm długości. Tego nie obrobimy.');
-        add('ok', 'Bez minimum. Nawet jedna sztuka.');
-        add('maybe', 'Średnicę i resztę wymiarów potwierdzimy przy wycenie. Przyślij rysunek, szkic z wymiarami albo wzór.');
+        else if (W <= T.cnc) add('ok', 'Do ' + T.cnc + ' cm długości: automat CNC albo maszyny uniwersalne.');
+        else if (W <= T.uni) add('ok', 'Do ' + T.uni + ' cm długości: tokarka lub frezarka uniwersalna.');
+        else add('no', 'Ponad ' + T.uni + ' cm długości. Tego nie obrobimy.');
+        add('ok', Q !== null ? Math.round(Q) + ' szt. Bez minimum, robimy nawet jedną sztukę.' : 'Bez minimum. Nawet jedna sztuka.');
+        add('maybe', (H !== null || D !== null)
+          ? 'Średnicę i wysokość przeniesiemy do zapytania. Przyślij też rysunek, szkic z wymiarami albo wzór.'
+          : 'Średnicę i resztę wymiarów potwierdzimy przy wycenie. Przyślij rysunek, szkic z wymiarami albo wzór.');
         decided = W !== null;
       }
 
@@ -86,10 +101,8 @@
         li.className = 'k-' + i.kind;
         li.innerHTML = ICONS[i.kind];
         var t = document.createElement('span');
-        t.style.color = 'var(--text)';
         var sr = document.createElement('span');
         sr.className = 'sr';
-        sr.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)';
         sr.textContent = SR[i.kind];
         t.appendChild(sr);
         t.appendChild(document.createTextNode(i.text));
@@ -97,6 +110,15 @@
         notes.appendChild(li);
       });
       cta.hidden = state !== 'ok';
+
+      /* Czytnik ekranu dostaje tylko werdykt i powody odmowy, z opóźnieniem, żeby nie mówił po każdym klawiszu */
+      if (announce && live) {
+        clearTimeout(liveTimer);
+        var msg = verdict.textContent + ' ' + items
+          .filter(function (i) { return i.kind === 'no'; })
+          .map(function (i) { return i.text; }).join(' ');
+        liveTimer = setTimeout(function () { live.textContent = msg.trim(); }, 800);
+      }
     };
 
     var setMode = function (m) {
@@ -111,57 +133,88 @@
     form.addEventListener('input', render);
     form.addEventListener('submit', function (e) { e.preventDefault(); });
 
-    /* Przycisk „Wyślij zapytanie z tymi wymiarami” wpisuje dane do formularza */
-    cta.addEventListener('click', function () {
-      var opis = document.getElementById('opis');
-      if (!opis || opis.value.trim()) return;
-      var names = { proszek: 'Malowanie proszkowe', mokro: 'Lakierowanie na mokro', toczenie: 'Toczenie / frezowanie' };
-      var dims = [inA.value, inB.value, inC.value].filter(function (v) { return v.trim(); }).join(' × ');
-      var parts = [names[mode] + ':'];
-      if (dims) parts.push(dims + ' cm');
-      if (inQ.value.trim()) parts.push(inQ.value.trim() + ' szt.');
-      opis.value = parts.join(' ') + '\nMateriał: \nKolor: \nTermin: ';
+    /* Przycisk „Wyślij zapytanie z tymi wymiarami” przenosi dane do formularza i ustawia kursor */
+    cta.addEventListener('click', function (e) {
+      var opis = $('opis');
+      var inquiry = $('inquiry');
+      if (!opis || !inquiry) return;
+      e.preventDefault();
+
+      var dims = [inA.value, inB.value, inC.value].map(function (v) { return v.trim(); }).filter(Boolean).join(' × ');
+      var line = NAMES[mode] + ':';
+      if (dims) line += ' ' + dims + ' cm';
+      if (inQ.value.trim()) line += ', ' + inQ.value.trim() + ' szt.';
+      var auto = line + '\nMateriał: \nKolor: \nTermin: ';
+
+      if (!opis.value.trim() || opis.value === opis.dataset.auto) {
+        opis.value = auto;
+        opis.dataset.auto = auto;
+      } else if (opis.value.indexOf(line) === -1) {
+        opis.value = line + '\n' + opis.value;
+        opis.dataset.auto = '';
+      }
+
+      var target = null;
+      inquiry.querySelectorAll('input[required]').forEach(function (el) {
+        if (!target && !el.value.trim()) target = el;
+      });
+      target = target || opis;
+      $('kontakt').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+      target.focus({ preventScroll: true });
     });
 
     render();
+    announce = true;
   }
 
   /* ---------- Formularz zapytania ----------
-     Dopóki w action jest TWOJ_ID, formularz otwiera program pocztowy (mailto).
+     Dopóki action wskazuje na mailto, formularz otwiera program pocztowy i kopiuje treść do schowka.
      Po podpięciu Formspree (instrukcja w README) wysyła w tle. */
-  var inq = document.getElementById('inquiry');
+  var inq = $('inquiry');
   if (inq) {
-    var status = document.getElementById('form-status');
+    var status = $('form-status');
+    var setStatus = function (state, text) { status.dataset.state = state; status.textContent = text; };
+    var fallbackHelp = 'zadzwoń: ' + CONTACT.tel + ' albo napisz na ' + CONTACT.mail + '.';
+
     inq.addEventListener('submit', function (e) {
       if (!inq.checkValidity()) return;
       e.preventDefault();
       var fd = new FormData(inq);
-      var configured = inq.action.indexOf('TWOJ_ID') === -1;
+
+      if (fd.get('_gotcha')) {
+        inq.reset();
+        setStatus('ok', 'Dostaliśmy zapytanie.');
+        return;
+      }
+
+      var configured = /^https:\/\/formspree\.io\/f\/[A-Za-z0-9]+$/.test(inq.getAttribute('action') || '');
 
       if (!configured) {
         var body = 'Firma: ' + fd.get('firma') + '\nNIP: ' + fd.get('nip') + '\nTelefon: ' + fd.get('telefon') +
           '\nE-mail: ' + (fd.get('email') || '-') + '\n\n' + fd.get('opis');
-        window.location.href = 'mailto:biuro@misiarz.pl?subject=' + encodeURIComponent('Zapytanie: ' + fd.get('firma')) +
+        var copied = navigator.clipboard && navigator.clipboard.writeText
+          ? navigator.clipboard.writeText(body).then(function () { return true; }, function () { return false; })
+          : Promise.resolve(false);
+        window.location.href = 'mailto:' + CONTACT.mail + '?subject=' + encodeURIComponent('Zapytanie: ' + fd.get('firma')) +
           '&body=' + encodeURIComponent(body);
-        status.dataset.state = 'ok';
-        status.textContent = 'Otwieramy Twój program pocztowy z gotową wiadomością. Wystarczy wysłać.';
+        copied.then(function (ok) {
+          setStatus('', 'Otwieramy program pocztowy z gotową wiadomością. Zapytanie dojdzie dopiero, gdy klikniesz w nim „Wyślij”. ' +
+            'Jeśli program się nie otworzył, ' + (ok ? 'treść jest już w schowku: wklej ją w wiadomość do ' + CONTACT.mail + ' albo zadzwoń: ' + CONTACT.tel + '.' : fallbackHelp));
+        });
         return;
       }
 
       var btn = inq.querySelector('button[type="submit"]');
       btn.disabled = true;
-      status.dataset.state = '';
-      status.textContent = 'Wysyłamy…';
-      fetch(inq.action, { method: 'POST', body: fd, headers: { Accept: 'application/json' } })
+      setStatus('', 'Wysyłamy…');
+      fetch(inq.getAttribute('action'), { method: 'POST', body: fd, headers: { Accept: 'application/json' } })
         .then(function (r) {
           if (!r.ok) throw new Error(r.status);
           inq.reset();
-          status.dataset.state = 'ok';
-          status.textContent = 'Dostaliśmy zapytanie. Odezwiemy się w godzinach pracy, pon.–pt. 7:00–15:00.';
+          setStatus('ok', 'Dostaliśmy zapytanie. Odezwiemy się w godzinach pracy, pon.–pt. 7:00–15:00.');
         })
         .catch(function () {
-          status.dataset.state = 'err';
-          status.textContent = 'Nie udało się wysłać. Zadzwoń: 32 219 84 62 albo napisz na biuro@misiarz.pl.';
+          setStatus('err', 'Nie udało się wysłać. ' + fallbackHelp.charAt(0).toUpperCase() + fallbackHelp.slice(1));
         })
         .then(function () { btn.disabled = false; });
     });
