@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://zwierzyniecka1.pl/sitemap.xml
